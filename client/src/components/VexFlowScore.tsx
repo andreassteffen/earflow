@@ -28,7 +28,7 @@ const VexFlowScore: React.FC = () => {
       return new VF.StaveNote({ keys: [key], duration: 'q' });
     });
 
-    const voice = new VF.Voice({ num_beats: 4, beat_value: 4 });
+    const voice = new VF.Voice({ numBeats: 4, beatValue: 4 });
     voice.addTickables(vexNotes);
     new VF.Formatter().joinVoices([voice]).format([voice], 400);
     voice.draw(context, stave);
