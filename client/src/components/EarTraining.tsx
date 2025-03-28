@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import * as Tone from 'tone';
 
 const SCALE_NOTES = ['G3', 'A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5'];
@@ -41,12 +41,12 @@ const EarTraining: React.FC = () => {
   const [tetrachordLength, setTetrachordLength] = useState(4);
   const [allowedStartNotes, setAllowedStartNotes] = useState<string[]>(VALID_START_NOTES.slice());
 
-  const playTetrachord = async (note?: string, silent: boolean = false) => {
+  const playTetrachord = async (note?: string, silent: boolean = false, synth?: Tone.Synth) => {
     if (!silent) setStatus('playing');
     setShowResult(false);
     setAnswer('');
 
-    const synth = new Tone.Synth().toDestination();
+    if (!synth) synth = new Tone.Synth().toDestination();
 
     const root = note || chooseWeightedRandom(stats, allowedStartNotes, tetrachordLength);
     setCorrectNote(root);
@@ -60,12 +60,12 @@ const EarTraining: React.FC = () => {
     const now = Tone.now();
 
     ascending.forEach((note, i) => {
-      synth.triggerAttackRelease(note, `${noteDuration}s`, now + i * (noteDuration + 0.1));
+      synth!.triggerAttackRelease(note, `${noteDuration}s`, now + i * (noteDuration + 0.1));
     });
 
     const startTime = now + ascending.length * (noteDuration + 0.1) + pauseBetween;
     descending.forEach((note, i) => {
-      synth.triggerAttackRelease(note, `${noteDuration}s`, startTime + i * (noteDuration + 0.1));
+      synth!.triggerAttackRelease(note, `${noteDuration}s`, startTime + i * (noteDuration + 0.1));
     });
 
     const totalDuration = ascending.length * (noteDuration + 0.1) + pauseBetween + descending.length * (noteDuration + 0.1);
@@ -89,18 +89,20 @@ const EarTraining: React.FC = () => {
     });
   };
 
-  const handlePlayAgain = () => {
+  const handlePlayAgain = async () => {
     if (correctNote) {
-      playTetrachord(correctNote, true);
+      const synth = new Tone.Synth().toDestination();
+      playTetrachord(correctNote, true, synth);
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setAnswer('');
     setCorrectNote(null);
     setShowResult(false);
     setStatus('idle');
-    playTetrachord();
+    const synth = new Tone.Synth().toDestination();
+    playTetrachord(undefined, false, synth);
   };
 
   return (
@@ -147,8 +149,9 @@ const EarTraining: React.FC = () => {
         {status === 'idle' && (
           <button
             onClick={async () => {
-              await Tone.start(); // <-- Ensure audio starts after user interaction
-              playTetrachord();
+              await Tone.start();
+              const synth = new Tone.Synth().toDestination();
+              playTetrachord(undefined, false, synth);
             }}
           >
             ▶️ Play Tetrachord
