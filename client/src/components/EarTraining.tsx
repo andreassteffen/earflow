@@ -45,7 +45,7 @@ const EarTraining: React.FC = () => {
     if (!silent) setStatus('playing');
     setShowResult(false);
     setAnswer('');
-    await Tone.start();
+
     const synth = new Tone.Synth().toDestination();
 
     const root = note || chooseWeightedRandom(stats, allowedStartNotes, tetrachordLength);
@@ -144,7 +144,16 @@ const EarTraining: React.FC = () => {
           </div>
         </div>
 
-        {status === 'idle' && <button onClick={() => playTetrachord()}>▶️ Play Tetrachord</button>}
+        {status === 'idle' && (
+          <button
+            onClick={async () => {
+              await Tone.start(); // <-- Ensure audio starts after user interaction
+              playTetrachord();
+            }}
+          >
+            ▶️ Play Tetrachord
+          </button>
+        )}
 
         {status === 'answered' && (
           <div>
