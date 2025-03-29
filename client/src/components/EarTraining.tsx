@@ -64,7 +64,7 @@ const EarTraining: React.FC = () => {
     activeSynths.current = [];
   };
 
-  const playTetrachord = async (note?: string, silent: boolean = false, synth?: Tone.Synth) => {
+  const playTetrachord = async (note?: string, synth?: Tone.Synth) => {
     stopCurrentPlayback();
     setStatus('playing');
     setShowResult(false);
@@ -127,7 +127,7 @@ const EarTraining: React.FC = () => {
   const handlePlayAgain = async () => {
     if (correctNote) {
       const synth = new Tone.Synth().toDestination();
-      playTetrachord(correctNote, true, synth);
+      playTetrachord(correctNote,  synth);
     }
   };
 
@@ -138,7 +138,7 @@ const EarTraining: React.FC = () => {
     setShowResult(false);
     setStatus('idle');
     const synth = new Tone.Synth().toDestination();
-    playTetrachord(undefined, false, synth);
+    playTetrachord(undefined,  synth);
   };
 
   return (
