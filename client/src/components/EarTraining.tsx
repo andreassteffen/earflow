@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// EarTraining.tsx
+import React, { useState, useRef } from 'react';
 import * as Tone from 'tone';
 
 const SCALE_NOTES = ['G3', 'A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5'];
@@ -34,19 +35,44 @@ function chooseWeightedRandom(
 const EarTraining: React.FC = () => {
   const [answer, setAnswer] = useState('');
   const [correctNote, setCorrectNote] = useState<string | null>(null);
-  const [status, setStatus] = useState<'idle' | 'playing' | 'answered'>('idle');
+  const [status, setStatus] = useState<'start' | 'idle' | 'playing' | 'answered'>('start');
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [stats, setStats] = useState<Record<string, { correct: number; incorrect: number }>>({});
   const [tetrachordLength, setTetrachordLength] = useState(4);
   const [allowedStartNotes, setAllowedStartNotes] = useState<string[]>(VALID_START_NOTES.slice());
+  const [showSettings, setShowSettings] = useState(false);
+  const currentTransportId = useRef<number | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeSynths = useRef<Tone.Synth[]>([]);
+
+  const stopCurrentPlayback = () => {
+    if (currentTransportId.current !== null) {
+      Tone.Transport.clear(currentTransportId.current);
+      currentTransportId.current = null;
+    }
+    Tone.Transport.stop();
+    if (timeoutRef.current !== null) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    activeSynths.current.forEach((s) => {
+      try {
+        s.dispose();
+      } catch {}
+    });
+    activeSynths.current = [];
+  };
 
   const playTetrachord = async (note?: string, silent: boolean = false, synth?: Tone.Synth) => {
-    if (!silent) setStatus('playing');
+    stopCurrentPlayback();
+    setStatus('playing');
     setShowResult(false);
     setAnswer('');
 
+    await Tone.start();
     if (!synth) synth = new Tone.Synth().toDestination();
+    activeSynths.current.push(synth);
 
     const root = note || chooseWeightedRandom(stats, allowedStartNotes, tetrachordLength);
     setCorrectNote(root);
@@ -60,21 +86,26 @@ const EarTraining: React.FC = () => {
     const now = Tone.now();
 
     ascending.forEach((note, i) => {
-      synth!.triggerAttackRelease(note, `${noteDuration}s`, now + i * (noteDuration + 0.1));
+      synth.triggerAttackRelease(note, `${noteDuration}s`, now + i * (noteDuration + 0.1));
     });
 
     const startTime = now + ascending.length * (noteDuration + 0.1) + pauseBetween;
     descending.forEach((note, i) => {
-      synth!.triggerAttackRelease(note, `${noteDuration}s`, startTime + i * (noteDuration + 0.1));
+      synth.triggerAttackRelease(note, `${noteDuration}s`, startTime + i * (noteDuration + 0.1));
     });
 
     const totalDuration = ascending.length * (noteDuration + 0.1) + pauseBetween + descending.length * (noteDuration + 0.1);
-    setTimeout(() => setStatus('answered'), totalDuration * 1000);
+    timeoutRef.current = setTimeout(() => setStatus('answered'), totalDuration * 1000);
+    currentTransportId.current = Tone.Transport.schedule(() => {
+      setStatus('answered');
+    }, totalDuration);
+    Tone.Transport.start();
   };
 
-  const handleGuess = () => {
+  const handleGuess = (selected: string) => {
     if (!correctNote) return;
-    const isCorrect = answer.toUpperCase() === correctNote.toUpperCase();
+    setAnswer(selected);
+    const isCorrect = selected === correctNote;
     if (isCorrect) setScore((s) => s + 1);
     setShowResult(true);
     setStats((prev) => {
@@ -87,6 +118,10 @@ const EarTraining: React.FC = () => {
         },
       };
     });
+    if (isCorrect) {
+      stopCurrentPlayback();
+      setTimeout(() => handleNext(), 1000);
+    }
   };
 
   const handlePlayAgain = async () => {
@@ -97,6 +132,7 @@ const EarTraining: React.FC = () => {
   };
 
   const handleNext = async () => {
+    stopCurrentPlayback();
     setAnswer('');
     setCorrectNote(null);
     setShowResult(false);
@@ -106,13 +142,17 @@ const EarTraining: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', fontFamily: 'sans-serif' }}>
-      <div style={{ padding: '2rem', flex: 1 }}>
-        <h2>🎵 Ear Training: Tetrachord Challenge</h2>
-        <p>Score: {score}</p>
+    <div className="min-h-screen p-4 max-w-xl mx-auto font-sans">
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-2xl font-bold">🎵 Gehörtraining</h2>
+        <button onClick={() => setShowSettings(!showSettings)} className="text-2xl">⚙️</button>
+      </div>
 
-        <div style={{ margin: '1rem 0' }}>
-          <label>
+      {status === 'playing' && <div className="animate-pulse text-lg text-blue-600 mb-2">🎶 Spielt ab…</div>}
+
+      {showSettings && (
+        <div className="border rounded-lg p-4 mb-4">
+          <label className="block mb-2">
             🎚️ Anzahl Töne auf-/abwärts: {tetrachordLength}
             <input
               type="range"
@@ -120,23 +160,19 @@ const EarTraining: React.FC = () => {
               max={7}
               value={tetrachordLength}
               onChange={(e) => setTetrachordLength(parseInt(e.target.value))}
+              className="w-full"
             />
           </label>
-        </div>
-
-        <div style={{ marginBottom: '1rem' }}>
-          <p>🎯 Erlaubte Starttöne:</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <p className="font-medium">🎯 Erlaubte Starttöne:</p>
+          <div className="flex flex-wrap gap-2">
             {VALID_START_NOTES.map((note) => (
-              <label key={note} style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+              <label key={note} className="flex items-center gap-1">
                 <input
                   type="checkbox"
                   checked={allowedStartNotes.includes(note)}
                   onChange={() => {
                     setAllowedStartNotes((prev) =>
-                      prev.includes(note)
-                        ? prev.filter((n) => n !== note)
-                        : [...prev, note]
+                      prev.includes(note) ? prev.filter((n) => n !== note) : [...prev, note]
                     );
                   }}
                 />
@@ -145,57 +181,44 @@ const EarTraining: React.FC = () => {
             ))}
           </div>
         </div>
+      )}
 
-        {status === 'idle' && (
-          <button
-            onClick={async () => {
-              await Tone.start();
-              const synth = new Tone.Synth().toDestination();
-              playTetrachord(undefined, false, synth);
-            }}
-          >
-            ▶️ Play Tetrachord
-          </button>
-        )}
+      <p className="mb-4 text-lg">🎯 Punktestand: <strong>{score}</strong></p>
 
-        {status === 'answered' && (
-          <div>
-            <p>What was the first note?</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
-              {VALID_START_NOTES.map((note) => (
-                <button
-                  key={note}
-                  onClick={() => setAnswer(note)}
-                  style={{
-                    padding: '0.5rem 1rem',
-                    backgroundColor: answer === note ? '#ddd' : '#f0f0f0',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {note}
-                </button>
-              ))}
-            </div>
-            <button onClick={handleGuess}>Check</button>
-            {showResult && (
-              <p>
-                {answer.toUpperCase() === correctNote?.toUpperCase()
-                  ? '✅ Correct!'
-                  : `❌ Incorrect. It was ${correctNote}`}
-              </p>
-            )}
-            <div style={{ marginTop: '1rem' }}>
-              <button onClick={handlePlayAgain} style={{ marginRight: '1rem' }}>🔁 Replay</button>
-              <button onClick={handleNext}>⏭️ Next</button>
-            </div>
+      {status === 'start' && (
+        <button onClick={handleNext} className="px-4 py-2 bg-blue-600 text-white rounded mb-4">🎬 Starte Challenge</button>
+      )}
+
+      {(status === 'answered' || status === 'playing') && (
+        <div className="mb-4">
+          <p className="mb-2">Welcher war der erste Ton?</p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {VALID_START_NOTES.map((note) => (
+              <button
+                key={note}
+                onClick={() => handleGuess(note)}
+                className={`px-3 py-2 border rounded ${answer === note ? 'bg-gray-300' : 'bg-gray-100'}`}
+              >
+                {note}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
-      <div style={{ padding: '2rem', width: '300px', borderLeft: '1px solid #ccc' }}>
-        <h3>📊 Stats by Note</h3>
-        <ul>
+          {!showResult || answer.toUpperCase() !== correctNote?.toUpperCase() ? (
+            <button onClick={handlePlayAgain} className="mb-4 px-4 py-2 border rounded">🔁 Nochmal hören</button>
+          ) : null}
+          {showResult && (
+            <p className="text-lg">
+              {answer.toUpperCase() === correctNote?.toUpperCase()
+                ? '✅ Richtig!'
+                : `❌ Falsch. Versuch es nochmal.`}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="mt-8">
+        <h3 className="font-semibold text-lg mb-2">📊 Statistik</h3>
+        <ul className="list-disc list-inside">
           {VALID_START_NOTES.map((note) => {
             const stat = stats[note] || { correct: 0, incorrect: 0 };
             return (
