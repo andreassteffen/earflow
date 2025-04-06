@@ -1,6 +1,7 @@
 // EarTraining.tsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import * as Tone from 'tone';
+import './EarTraining.css';
 
 const SCALE_NOTES = ['G3', 'A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5'];
 const VALID_START_NOTES = SCALE_NOTES.slice(SCALE_NOTES.indexOf('C4'), SCALE_NOTES.indexOf('B4') + 1);
@@ -44,7 +45,30 @@ const EarTraining: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const currentTransportId = useRef<number | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const activeSynths = useRef<Tone.Synth[]>([]);
+  const [sampler, setSampler] = useState<Tone.Sampler | null>(null);
+
+  useEffect(() => {
+    // Initialize the piano sampler
+    const piano = new Tone.Sampler({
+      urls: {
+        C4: "C4.mp3",
+        "D#4": "Ds4.mp3",
+        "F#4": "Fs4.mp3",
+        A4: "A4.mp3",
+      },
+      release: 1,
+      baseUrl: "https://tonejs.github.io/audio/salamander/",
+    }).toDestination();
+
+    // Load the samples
+    Tone.loaded().then(() => {
+      setSampler(piano);
+    });
+
+    return () => {
+      piano.dispose();
+    };
+  }, []);
 
   const stopCurrentPlayback = () => {
     if (currentTransportId.current !== null) {
@@ -56,24 +80,17 @@ const EarTraining: React.FC = () => {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    activeSynths.current.forEach((s) => {
-      try {
-        s.dispose();
-      } catch {}
-    });
-    activeSynths.current = [];
   };
 
-  const playTetrachord = async (note?: string, synth?: Tone.Synth) => {
+  const playTetrachord = async (note?: string) => {
+    if (!sampler) return;
+    
     stopCurrentPlayback();
     setStatus('playing');
     setShowResult(false);
     setAnswer('');
 
     await Tone.start();
-    if (!synth) synth = new Tone.Synth().toDestination();
-    activeSynths.current.push(synth);
-
     const root = note || chooseWeightedRandom(stats, allowedStartNotes, tetrachordLength);
     setCorrectNote(root);
 
@@ -86,12 +103,12 @@ const EarTraining: React.FC = () => {
     const now = Tone.now();
 
     ascending.forEach((note, i) => {
-      synth.triggerAttackRelease(note, `${noteDuration}s`, now + i * (noteDuration + 0.1));
+      sampler.triggerAttackRelease(note, `${noteDuration}s`, now + i * (noteDuration + 0.1));
     });
 
     const startTime = now + ascending.length * (noteDuration + 0.1) + pauseBetween;
     descending.forEach((note, i) => {
-      synth.triggerAttackRelease(note, `${noteDuration}s`, startTime + i * (noteDuration + 0.1));
+      sampler.triggerAttackRelease(note, `${noteDuration}s`, startTime + i * (noteDuration + 0.1));
     });
 
     const totalDuration = ascending.length * (noteDuration + 0.1) + pauseBetween + descending.length * (noteDuration + 0.1);
@@ -126,8 +143,7 @@ const EarTraining: React.FC = () => {
 
   const handlePlayAgain = async () => {
     if (correctNote) {
-      const synth = new Tone.Synth().toDestination();
-      playTetrachord(correctNote,  synth);
+      playTetrachord(correctNote);
     }
   };
 
@@ -137,8 +153,7 @@ const EarTraining: React.FC = () => {
     setCorrectNote(null);
     setShowResult(false);
     setStatus('idle');
-    const synth = new Tone.Synth().toDestination();
-    playTetrachord(undefined,  synth);
+    playTetrachord();
   };
 
   return (

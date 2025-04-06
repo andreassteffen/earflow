@@ -1,12 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import Flow from 'vexflow';
-import * as Tone from 'tone';
 
-const VexFlowScore: React.FC = () => {
+interface Note {
+  pitch: string;
+  duration: string;
+}
+
+interface VexFlowScoreProps {
+  notes: Note[];
+}
+
+const VexFlowScore: React.FC<VexFlowScoreProps> = ({ notes }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-
-  // Define the notes: label (for Tone.js) + key (for VexFlow)
-  const noteData = ['C4', 'D4', 'E4', 'F4'];
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -22,32 +27,59 @@ const VexFlowScore: React.FC = () => {
     stave.addClef('treble').addTimeSignature('4/4');
     stave.setContext(context).draw();
 
-    // Convert to VexFlow StaveNotes
-    const vexNotes = noteData.map((note) => {
-      const key = note.toLowerCase().replace('4', '/4'); // e.g., 'C4' → 'c/4'
-      return new VF.StaveNote({ keys: [key], duration: 'q' });
-    });
+    try {
+      // Convert to VexFlow StaveNotes
+      const vexNotes = notes.map((note) => {
+        // Convert Tone.js format (C4) to VexFlow format (c/4)
+        const pitch = note.pitch.toLowerCase();
+        const octave = pitch.match(/\d+/)?.[0] || '4';
+        const noteName = pitch.replace(/\d+/, '');
+        
+        // Handle sharps and flats
+        let key = noteName;
+        if (noteName.includes('#')) {
+          key = noteName.replace('#', '/#');
+        } else {
+          key = noteName + '/';
+        }
+        key += octave;
+        
+        const staveNote = new VF.StaveNote({ 
+          keys: [key], 
+          duration: note.duration,
+          clef: 'treble'
+        });
 
-    const voice = new VF.Voice({ numBeats: 4, beatValue: 4 });
-    voice.addTickables(vexNotes);
-    new VF.Formatter().joinVoices([voice]).format([voice], 400);
-    voice.draw(context, stave);
-  }, []);
+        // Add accidental if needed
+        if (noteName.includes('#')) {
+          const accidental = new VF.Accidental('#'); // Create the accidental
+          staveNote.addModifier(accidental, 0); // Add it to the note
+        }
 
-  const handlePlay = async () => {
-    await Tone.start();
-    const synth = new Tone.Synth().toDestination();
+        return staveNote;
+      });
 
-    noteData.forEach((note, i) => {
-      synth.triggerAttackRelease(note, '8n', Tone.now() + i * 0.5);
-    });
-  };
+      // Calculate total beats in the notes
+      const totalBeats = notes.reduce((sum, note) => {
+        const duration = note.duration;
+        if (duration === 'q') return sum + 1;
+        if (duration === 'h') return sum + 2;
+        if (duration === 'w') return sum + 4;
+        return sum;
+      }, 0);
+
+      const voice = new VF.Voice({ numBeats: totalBeats, beatValue: 4 });
+      voice.addTickables(vexNotes);
+      new VF.Formatter().joinVoices([voice]).format([voice], 400);
+      voice.draw(context, stave);
+    } catch (error) {
+      console.error('Error rendering notes:', error);
+    }
+  }, [notes]);
 
   return (
     <div>
-      <h2>🎵 VexFlow Score + Playback</h2>
       <div ref={containerRef}></div>
-      <button onClick={handlePlay}>▶️ Play</button>
     </div>
   );
 };
